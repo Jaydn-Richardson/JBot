@@ -7,3 +7,6 @@ source venv/bin/activate
 
 **once done, need to deactivate venv:
 deactivate
+
+**Update the requirements.txt with:
+pip freeze > requirements.txt
