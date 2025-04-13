@@ -1,0 +1,11 @@
+#Don't commit Virtual Environment or bot token
+venv/
+.env
+
+# Bytecode / cache
+__pycache__/
+*.pyc
+
+# VSCode or IDE settings
+.vscode/
+.idea/
