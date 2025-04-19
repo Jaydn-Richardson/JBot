@@ -11,8 +11,9 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 #Variables
-songQueue = []
+songQueue = {}
 ffmpeg_options = {
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn'
 }
 ydl_opts = {
@@ -41,10 +42,10 @@ async def on_ready():
 async def hello_world(interaction: discord.Interaction):
     await interaction.response.send_message("Hello World")
 
-async def play_next(vc):
-    if songQueue:
+async def play_next(vc, guild_id):
+    if songQueue[guild_id]:
         #get song from first spot and play it
-        url = songQueue[0]
+        url = songQueue[guild_id][0]
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             audio_url = info['url']
@@ -52,11 +53,17 @@ async def play_next(vc):
             
             #remove the song from the queue after it's done playing
             def after_playing(error):
-                songQueue.pop(0)
+                songQueue[guild_id].pop(0)
                 if error:
                     print(f"Playback error: {error}")
-                fut = play_next(vc)
-                asyncio.run_coroutine_threadsafe(fut, bot.loop)
+                
+                if songQueue[guild_id]:
+                    fut = play_next(vc, guild_id)
+                    asyncio.run_coroutine_threadsafe(fut, bot.loop)
+                else:
+                    coro = vc.disconnect()
+                    asyncio.run_coroutine_threadsafe(coro, bot.loop)
+                    del songQueue[guild_id]
 
             #play song then call after_playing function
             vc.play(source, after=after_playing)
@@ -68,6 +75,11 @@ async def play_next(vc):
 async def play(interaction: discord.Interaction, query: str):
     await interaction.response.defer()
     
+    #Check if there's a song queue already created
+    guild_id = interaction.guild.id
+    if guild_id not in songQueue:
+        songQueue[guild_id] = []
+        
     #Make sure the user is in a voice channel
     voice_channel = interaction.user.voice.channel if interaction.user.voice else None
     if not voice_channel:
@@ -90,11 +102,11 @@ async def play(interaction: discord.Interaction, query: str):
 
         #Play the YouTube Audio. If nothing playing, play immediately else add it to the queue
         if not vc.is_playing():
-            songQueue.insert(0, url)
+            songQueue[guild_id].insert(0, url)
             await interaction.followup.send(f"Now Playing: **{title}**")
-            await play_next(vc)
+            await play_next(vc, guild_id)
         else:
-            songQueue.append(url)
+            songQueue[guild_id].append(url)
             await interaction.followup.send(f"Song Queued: **{title}**")
 
     except Exception as e:
@@ -103,16 +115,28 @@ async def play(interaction: discord.Interaction, query: str):
 #Slash command /skip
 @bot.tree.command(name="skip", description="Skips current song playing")
 async def skip(interaction: discord.Interaction):
-    vc = interaction.guild.voice_client
-    if vc and vc.is_playing():
-        vc.stop()
-        if len(songQueue) > 1:
-            await interaction.response.send_message("Skipped current song")
+    #Get guild
+    guild_id = interaction.guild.id
+    
+    try:
+        vc = interaction.guild.voice_client
+        #Check if song is playing. If not tell them no music
+        if vc and vc.is_playing():
+            vc.stop()
+            #If there is no more music queued tell them
+            if len(songQueue[guild_id]) > 1:
+                await interaction.response.send_message("Skipped current song")
+            else:
+                del songQueue[guild_id]
+                await interaction.response.send_message("Stopped playing music")
+                await vc.disconnect()
         else:
-            await interaction.response.send_message("Stopped playing music")
-    else:
-        await interaction.response.send_message("No music is currently playing")
+            await interaction.response.send_message("No music is currently playing")
+    except Exception as e:
+        await interaction.followup.send(f"Error: {e}")
 
+#Slash command /stop
+#@bot.tree.command(name="stop", description="Stops")
 
 #Run the bot
 bot.run(TOKEN)
