@@ -100,6 +100,19 @@ async def play(interaction: discord.Interaction, query: str):
     except Exception as e:
         await interaction.followup.send(f"Error: {e}")
 
+#Slash command /skip
+@bot.tree.command(name="skip", description="Skips current song playing")
+async def skip(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+    if vc and vc.is_playing():
+        vc.stop()
+        if len(songQueue) > 1:
+            await interaction.response.send_message("Skipped current song")
+        else:
+            await interaction.response.send_message("Stopped playing music")
+    else:
+        await interaction.response.send_message("No music is currently playing")
+
 
 #Run the bot
 bot.run(TOKEN)
