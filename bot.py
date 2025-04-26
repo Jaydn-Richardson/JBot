@@ -22,6 +22,11 @@ ydl_opts = {
     'default_search': 'ytsearch',
     'noplaylist': True
 }
+ydl_opts_playlist = {
+    'quiet': True,
+    'skip_download': True,
+    'extract_flat': True,
+}
 
 #Set up bot with no command prefix (we're using slash commands)
 intents = discord.Intents.default()
@@ -53,17 +58,18 @@ async def play_next(vc, guild_id):
             
             #remove the song from the queue after it's done playing
             def after_playing(error):
-                songQueue[guild_id].pop(0)
-                if error:
-                    print(f"Playback error: {error}")
-                
-                if songQueue[guild_id]:
-                    fut = play_next(vc, guild_id)
-                    asyncio.run_coroutine_threadsafe(fut, bot.loop)
-                else:
-                    coro = vc.disconnect()
-                    asyncio.run_coroutine_threadsafe(coro, bot.loop)
-                    del songQueue[guild_id]
+                if guild_id in songQueue:
+                    songQueue[guild_id].pop(0)
+                    if error:
+                        print(f"Playback error: {error}")
+                    
+                    if songQueue[guild_id]:
+                        fut = play_next(vc, guild_id)
+                        asyncio.run_coroutine_threadsafe(fut, bot.loop)
+                    else:
+                        coro = vc.disconnect()
+                        asyncio.run_coroutine_threadsafe(coro, bot.loop)
+                        del songQueue[guild_id]
 
             #play song then call after_playing function
             vc.play(source, after=after_playing)
@@ -75,7 +81,7 @@ async def play_next(vc, guild_id):
 async def play(interaction: discord.Interaction, query: str):
     await interaction.response.defer()
     
-    #Check if there's a song queue already created
+    #Create a song queue for this server if there's not one already
     guild_id = interaction.guild.id
     if guild_id not in songQueue:
         songQueue[guild_id] = []
@@ -119,8 +125,8 @@ async def skip(interaction: discord.Interaction):
     guild_id = interaction.guild.id
     
     try:
-        vc = interaction.guild.voice_client
         #Check if song is playing. If not tell them no music
+        vc = interaction.guild.voice_client
         if vc and vc.is_playing():
             vc.stop()
             #If there is no more music queued tell them
@@ -138,5 +144,53 @@ async def skip(interaction: discord.Interaction):
 #Slash command /stop
 #@bot.tree.command(name="stop", description="Stops")
 
+
+#Slash command /playlist
+@bot.tree.command(name="playlist", description="Adds a YouTube playlist to the queue")
+@app_commands.describe(query="Search for a YouTube playlist")
+async def playlist(interaction: discord.Interaction, query: str):
+    await interaction.response.defer()
+    
+    #Make sure user is in a voice channel
+    voice_channel = interaction.user.voice.channel if interaction.user.voice else None
+    if not voice_channel:
+        await interaction.followup.send("You're not in a voice channel!")
+        return
+    
+    #Create a song queue for this server if there's not one already
+    guild_id = interaction.guild.id
+    if guild_id not in songQueue:
+        songQueue[guild_id] = []
+    
+    async def fetch_playlist_info(playlist_url):
+        with yt_dlp.YoutubeDL(ydl_opts_playlist) as ydl:
+            return  await asyncio.to_thread(ydl.extract_info, playlist_url, download=False)
+    
+    try:
+        #Get videos from playlist
+        with yt_dlp.YoutubeDL(ydl_opts_playlist) as ydl:
+            #info = await asyncio.to_thread(fetch_playlist_info, playlist_url)
+            info = await fetch_playlist_info(query)
+            
+            if 'entries' in info:
+                #Add videos to songQueue
+                for entry in info['entries']:
+                    songQueue[guild_id].append(f"https://www.youtube.com/watch?v={entry['id']}")
+                await interaction.followup.send(f"Playlist added to song queue with {len(info['entries'])} videos.")
+                
+                #Connect to voice if not already connected
+                vc = discord.utils.get(bot.voice_clients, guild=interaction.guild)
+                if not vc:
+                    vc = await voice_channel.connect()
+                
+                #If song is not playing then start playing queue
+                if not vc.is_playing():
+                    await play_next(vc, guild_id)
+            else:
+                await interaction.followup.send(f"Could not find playlist")
+    except Exception as e:
+        await interaction.followup.send(f"Error: {e}")
+
+    
 #Run the bot
 bot.run(TOKEN)
