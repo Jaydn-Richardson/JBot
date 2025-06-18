@@ -11,7 +11,9 @@ https://discord.com/oauth2/authorize?client_id=1361043438967197973&permissions=3
 
 
 Here is how to activate the virtual environment (Need to be in the folder):
+
 source venv/bin/activate
+
 **should see (venv) in terminal if activated properly
 
 **Once done with the code, you need to deactivate venv:
@@ -24,6 +26,7 @@ pip freeze > requirements.txt
 
 
 Commands:
+
 /hello_world: Prints hello world in a chat
 
 /play: Takes an entry and searched youtube for a video and adds it to a song queue. Plays the video in the voice channel you're in
