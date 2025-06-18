@@ -5,6 +5,7 @@ import asyncio
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
+import random
 
 #Load the bot toekn from the .env file
 load_dotenv()
@@ -142,7 +143,37 @@ async def skip(interaction: discord.Interaction):
         await interaction.followup.send(f"Error: {e}")
 
 #Slash command /stop
-#@bot.tree.command(name="stop", description="Stops")
+@bot.tree.command(name="stop", description="Stops playing music and clears song queue")
+async def stop(interaction: discord.Interaction):
+    #Get guild
+    guild_id = interaction.guild.id
+
+    try:
+        #Check if song is playing. If not tell them no music
+        vc = interaction.guild.voice_client
+        if vc and vc.is_playing():
+            #Disconnect bot from channel and clear playlist
+            vc.stop()
+            del songQueue[guild_id]
+            await interaction.response.send_message("Stopped playing music")
+            await vc.disconnect()
+        else:
+            await interaction.response.send_message("No music is currently playing")
+    except Exception as e:
+        await interaction.followup.send(f"Error: {e}")
+
+#Slash command /shuffle
+@bot.tree.command(name="shuffle", description="Shuffles the song queue")
+async def shuffle(interaction: discord.Interaction):
+    #Get guild
+    guild_id = interaction.guild.id
+
+    #Check if song queue exists
+    if songQueue[guild_id]:
+        random.shuffle(songQueue[guild_id])
+        await interaction.response.send_message("Shuffled the song queue")
+    else:
+        await interaction.response.send_message("No songs are in the queue.")
 
 
 #Slash command /playlist
@@ -176,7 +207,7 @@ async def playlist(interaction: discord.Interaction, query: str):
                 #Add videos to songQueue
                 for entry in info['entries']:
                     songQueue[guild_id].append(f"https://www.youtube.com/watch?v={entry['id']}")
-                await interaction.followup.send(f"Playlist added to song queue with {len(info['entries'])} videos.")
+                await interaction.followup.send(f"Playlist added to song queue with {len(info['entries'])} songs")
                 
                 #Connect to voice if not already connected
                 vc = discord.utils.get(bot.voice_clients, guild=interaction.guild)
